@@ -1,9 +1,8 @@
-name: Build Unsigned IPA
+name: Build Real QEMU NexusVM IPA
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -14,23 +13,31 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen & Build Tools
+        run: brew install xcodegen wget
+
+      - name: Download Precompiled iOS QEMU + SPICE Sysroot
+        run: |
+          mkdir -p Frameworks
+          curl -L "https://github.com" -o Sysroot.tar.gz
+          tar -xzf Sysroot.tar.gz -C Frameworks/
+          rm Sysroot.tar.gz
 
       - name: Generate Xcode Project
         run: xcodegen generate
 
       - name: Build Unsigned Release App
-        run: >
-          xcodebuild
-          -project NexusVM.xcodeproj
-          -scheme NexusVM
-          -configuration Release
-          -sdk iphoneos
-          -derivedDataPath build
-          CODE_SIGN_IDENTITY=""
-          CODE_SIGNING_REQUIRED=NO
-          CODE_SIGNING_ALLOWED=NO
+        run: |
+          xcodebuild \
+            -project NexusVM.xcodeproj \
+            -scheme NexusVM \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
 
       - name: Package Unsigned IPA
         run: |
@@ -38,8 +45,8 @@ jobs:
           cp -r build/Build/Products/Release-iphoneos/NexusVM.app Payload/
           zip -r NexusVM.ipa Payload
 
-      - name: Upload Unsigned IPA Artifact
+      - name: Upload NexusVM IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NexusVM-unsigned-ipa
+          name: NexusVM-QEMU-ipa
           path: NexusVM.ipa
