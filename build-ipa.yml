@@ -1,0 +1,45 @@
+name: Build Unsigned IPA
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project
+        run: xcodegen generate
+
+      - name: Build Unsigned Release App
+        run: >
+          xcodebuild
+          -project NexusVM.xcodeproj
+          -scheme NexusVM
+          -configuration Release
+          -sdk iphoneos
+          -derivedDataPath build
+          CODE_SIGN_IDENTITY=""
+          CODE_SIGNING_REQUIRED=NO
+          CODE_SIGNING_ALLOWED=NO
+
+      - name: Package Unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/NexusVM.app Payload/
+          zip -r NexusVM.ipa Payload
+
+      - name: Upload Unsigned IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NexusVM-unsigned-ipa
+          path: NexusVM.ipa
