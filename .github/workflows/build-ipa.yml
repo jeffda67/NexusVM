@@ -14,12 +14,21 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install XcodeGen & Build Tools
-        run: brew install xcodegen wget
+        run: brew install xcodegen jq
 
       - name: Download Precompiled iOS QEMU + SPICE Sysroot
         run: |
           mkdir -p Frameworks
-          curl -L "https://github.com" -o Sysroot.tar.gz
+          SYSROOT_URL=$(curl -s "https://github.com" \
+
+            | jq -r '[.[].assets[] | select(.name | test("Sysroot-ios-arm64.*\\.tar\\.gz$"; "i"))][0].browser_download_url')
+          echo "Found Sysroot URL: $SYSROOT_URL"
+          if [ -z "$SYSROOT_URL" ] || [ "$SYSROOT_URL" = "null" ]; then
+            echo "Error: Could not find Sysroot-ios-arm64 archive in recent UTM releases."
+            exit 1
+          fi
+          curl -fL "$SYSROOT_URL" -o Sysroot.tar.gz
+          file Sysroot.tar.gz
           tar -xzf Sysroot.tar.gz -C Frameworks/
           rm Sysroot.tar.gz
 
