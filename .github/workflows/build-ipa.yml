@@ -19,9 +19,7 @@ jobs:
       - name: Download Precompiled iOS QEMU + SPICE Sysroot
         run: |
           mkdir -p Frameworks
-          SYSROOT_URL=$(curl -s "https://github.com" \
-
-            | jq -r '[.[].assets[] | select(.name | test("Sysroot-ios-arm64.*\\.tar\\.gz$"; "i"))][0].browser_download_url')
+          SYSROOT_URL=$(curl -s "https://github.com" | jq -r '[.[].assets[] | select(.name | test("Sysroot-ios-arm64.*\\.tar\\.gz$"; "i"))][0].browser_download_url')
           echo "Found Sysroot URL: $SYSROOT_URL"
           if [ -z "$SYSROOT_URL" ] || [ "$SYSROOT_URL" = "null" ]; then
             echo "Error: Could not find Sysroot-ios-arm64 archive in recent UTM releases."
