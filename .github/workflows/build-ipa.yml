@@ -13,22 +13,44 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install XcodeGen & Build Tools
-        run: brew install xcodegen jq
+      - name: Install Build Dependencies
+        run: brew install xcodegen meson ninja pkg-config glib pixman libpng jpeg-turbo
 
-      - name: Download Precompiled iOS QEMU + SPICE Sysroot
+      - name: Cache Prebuilt iOS QEMU Frameworks
+        id: cache-qemu
+        uses: actions/cache@v4
+        with:
+          path: Frameworks
+          key: ios-qemu-arm64-v1
+
+      - name: Build iOS QEMU Shared Libraries
+        if: steps.cache-qemu.outputs.cache-hit != 'true'
         run: |
-          mkdir -p Frameworks
-          SYSROOT_URL=$(curl -s "https://github.com" | jq -r '[.[].assets[] | select(.name | test("Sysroot-ios-arm64.*\\.tar\\.gz$"; "i"))][0].browser_download_url')
-          echo "Found Sysroot URL: $SYSROOT_URL"
-          if [ -z "$SYSROOT_URL" ] || [ "$SYSROOT_URL" = "null" ]; then
-            echo "Error: Could not find Sysroot-ios-arm64 archive in recent UTM releases."
-            exit 1
-          fi
-          curl -fL "$SYSROOT_URL" -o Sysroot.tar.gz
-          file Sysroot.tar.gz
-          tar -xzf Sysroot.tar.gz -C Frameworks/
-          rm Sysroot.tar.gz
+          mkdir -p Frameworks/lib Frameworks/include
+          git clone --depth 1 --branch v9.2.0 https://gitlab.com qemu-src
+          cd qemu-src
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          ./configure \
+            --cross-prefix="" \
+            --cc="clang -arch arm64 -isysroot $SDK_PATH -miphoneos-version-min=27.0" \
+            --cxx="clang++ -arch arm64 -isysroot $SDK_PATH -miphoneos-version-min=27.0" \
+            --host=aarch64-apple-darwin \
+            --target-list=aarch64-softmmu,x86_64-softmmu \
+            --enable-shared-lib \
+            --enable-tcg \
+            --enable-vnc \
+            --disable-bsd-user \
+            --disable-linux-user \
+            --disable-docs \
+            --disable-tools \
+            --disable-guest-agent \
+            --disable-capstone \
+            --disable-slirp \
+            --prefix="$GITHUB_WORKSPACE/Frameworks"
+          ninja -C build
+          ninja -C build install
+          cd ..
+          rm -rf qemu-src
 
       - name: Generate Xcode Project
         run: xcodegen generate
