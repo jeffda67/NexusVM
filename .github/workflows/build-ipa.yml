@@ -13,52 +13,32 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Build Dependencies
-        run: brew install xcodegen meson ninja pkg-config glib pixman libpng jpeg-turbo
+      - name: Install XcodeGen & Build Tools
+        run: brew install xcodegen meson ninja pkg-config cmake nasm bison flex gettext
 
-      - name: Cache Prebuilt iOS QEMU Frameworks
+      - name: Cache Prebuilt iOS QEMU Sysroot
         id: cache-qemu
         uses: actions/cache@v4
         with:
           path: Frameworks
-          key: ios-qemu-arm64-v1
+          key: utm-ios-sysroot-v1
 
-      - name: Checkout QEMU Source
+      - name: Checkout UTM Source for iOS Sysroot Builder
         if: steps.cache-qemu.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
         with:
-          repository: qemu/qemu
-          ref: v9.2.0
-          path: qemu-src
+          repository: utmapp/UTM
+          path: utm-src
+          submodules: true
           fetch-depth: 1
 
-      - name: Build iOS QEMU Shared Libraries
+      - name: Build iOS QEMU + SPICE Sysroot
         if: steps.cache-qemu.outputs.cache-hit != 'true'
         run: |
-          mkdir -p Frameworks/lib Frameworks/include
-          cd qemu-src
-          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          ./configure \
-            --cross-prefix="" \
-            --cc="clang -arch arm64 -isysroot $SDK_PATH -miphoneos-version-min=27.0" \
-            --cxx="clang++ -arch arm64 -isysroot $SDK_PATH -miphoneos-version-min=27.0" \
-            --host=aarch64-apple-darwin \
-            --target-list=aarch64-softmmu,x86_64-softmmu \
-            --enable-shared-lib \
-            --enable-tcg \
-            --enable-vnc \
-            --disable-bsd-user \
-            --disable-linux-user \
-            --disable-docs \
-            --disable-tools \
-            --disable-guest-agent \
-            --disable-capstone \
-            --disable-slirp \
-            --prefix="$GITHUB_WORKSPACE/Frameworks"
-          ninja -C build
-          ninja -C build install
+          cd utm-src
+          ./scripts/build_dependencies.sh -p ios -a arm64 -o "$GITHUB_WORKSPACE/Frameworks"
           cd ..
-          rm -rf qemu-src
+          rm -rf utm-src
 
       - name: Generate Xcode Project
         run: xcodegen generate
