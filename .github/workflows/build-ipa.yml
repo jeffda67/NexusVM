@@ -16,7 +16,7 @@ jobs:
       - name: Install XcodeGen & Build Tools
         run: |
           brew install xcodegen meson ninja pkg-config cmake nasm bison flex gettext autoconf automake libtool
-          pip3 install --break-system-packages six pyparsing setuptools distlib
+          pip3 install --break-system-packages six pyparsing setuptools distlib pyyaml packaging tomli
 
       - name: Cache Prebuilt iOS QEMU Sysroot
         id: cache-qemu
