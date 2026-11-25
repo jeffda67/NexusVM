@@ -49,7 +49,7 @@ jobs:
         if: steps.cache-qemu.outputs.cache-hit != 'true'
         run: |
           cd utm-src
-          sed -i 's|rm \(.*IOMedia\.h\)|rm -f \1|g' scripts/build_dependencies.sh
+          python3 -c 'p="scripts/build_dependencies.sh"; s=open(p).read().replace("rm \"", "rm -f \""); open(p,"w").write(s)'
           NCPU=0 ./scripts/build_dependencies.sh -p ios -a arm64
           cd ..
           rm -rf Frameworks
