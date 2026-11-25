@@ -1,66 +1,112 @@
+
 name: Build Real QEMU NexusVM IPA
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: macos-latest
+    timeout-minutes: 360
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout NexusVM
         uses: actions/checkout@v4
 
-      - name: Cache Prebuilt iOS QEMU Sysroot
-        id: cache-qemu
-        uses: actions/cache@v4
-        with:
-          path: Frameworks
-          key: utm-ios-sysroot-v3
-
-      - name: Checkout UTM Source for iOS Sysroot Builder
-        if: steps.cache-qemu.outputs.cache-hit != 'true'
+      - name: Checkout UTM Source
         uses: actions/checkout@v4
         with:
           repository: utmapp/UTM
           path: utm-src
-          submodules: true
+          submodules: recursive
           fetch-depth: 1
 
-      - name: Install All Build & Python Dependencies
+      - name: Install Build Dependencies
         run: |
-          brew install xcodegen meson ninja pkg-config cmake nasm bison flex gettext autoconf automake libtool coreutils gnu-sed
-          echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
-          echo "$(brew --prefix flex)/bin" >> $GITHUB_PATH
-          echo "$(brew --prefix gettext)/bin" >> $GITHUB_PATH
-          echo "$(brew --prefix gnu-sed)/libexec/gnubin" >> $GITHUB_PATH
-          echo "$(brew --prefix coreutils)/libexec/gnubin" >> $GITHUB_PATH
-          pip3 install --break-system-packages six pyparsing setuptools distlib pyyaml packaging tomli mako markupsafe ply jinja2 lxml
-          if [ -f utm-src/scripts/build_dependencies.sh ]; then
-            PY_MODULES=$(grep -oE "import [a-zA-Z0-9_]+" utm-src/scripts/build_dependencies.sh | awk '{print $2}' | tr '\n' ' ')
-            for mod in $PY_MODULES; do
-              pip3 install --break-system-packages "$mod" || true
-            done
-          fi
+          brew install xcodegen meson ninja pkg-config cmake nasm bison flex gettext autoconf automake libtool coreutils
 
-      - name: Build iOS QEMU + SPICE Sysroot
-        if: steps.cache-qemu.outputs.cache-hit != 'true'
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Install Python Dependencies
         run: |
+          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install --break-system-packages \
+            six \
+            pyparsing \
+            setuptools \
+            distlib \
+            pyyaml \
+            packaging \
+            tomli \
+            mako \
+            markupsafe \
+            ply \
+            jinja2 \
+            lxml
+
+      - name: Verify Build Environment
+        run: |
+          echo "=== macOS ==="
+          sw_vers
+
+          echo "=== Xcode ==="
+          xcodebuild -version
+
+          echo "=== Python ==="
+          python3 --version
+
+          echo "=== Build Tools ==="
+          meson --version
+          ninja --version
+          cmake --version
+          pkg-config --version
+
+          echo "=== sed ==="
+          which sed
+          sed --version 2>/dev/null || true
+
+      - name: Build iOS QEMU and SPICE Sysroot
+        run: |
+          set -o pipefail
+
           cd utm-src
-          python3 -c 'p="scripts/build_dependencies.sh"; s=open(p).read().replace("rm \"", "rm -f \""); open(p,"w").write(s)'
+
+          echo "=== UTM dependency builder ==="
+          ls -la scripts/
+          test -f scripts/build_dependencies.sh
+
+          chmod +x scripts/build_dependencies.sh
+
+          echo "=== Build dependencies ==="
           NCPU=0 ./scripts/build_dependencies.sh -p ios -a arm64
+
           cd ..
+
+          echo "=== Verify sysroot ==="
+          test -d utm-src/sysroot-iOS-arm64
+
           rm -rf Frameworks
           mv utm-src/sysroot-iOS-arm64 Frameworks
-          rm -rf utm-src
+
+          test -d Frameworks
 
       - name: Generate Xcode Project
-        run: xcodegen generate
-
-      - name: Build Unsigned Release App
         run: |
+          xcodegen generate
+          test -d NexusVM.xcodeproj
+
+      - name: Build Unsigned iOS App
+        run: |
+          set -o pipefail
+
           xcodebuild \
             -project NexusVM.xcodeproj \
             -scheme NexusVM \
@@ -70,16 +116,47 @@ jobs:
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Verify App Build
+        run: |
+          APP_PATH="build/Build/Products/Release-iphoneos/NexusVM.app"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: NexusVM.app was not produced."
+            echo "Searching build directory:"
+            find build -name "*.app" -maxdepth 8 || true
+            exit 1
+          fi
+
+          echo "App successfully built:"
+          ls -lah "$APP_PATH"
 
       - name: Package Unsigned IPA
         run: |
+          set -e
+
+          APP_PATH="build/Build/Products/Release-iphoneos/NexusVM.app"
+
+          test -d "$APP_PATH"
+
+          rm -rf Payload NexusVM.ipa
           mkdir -p Payload
-          cp -r build/Build/Products/Release-iphoneos/NexusVM.app Payload/
+
+          cp -R "$APP_PATH" Payload/
+
           zip -r NexusVM.ipa Payload
 
-      - name: Upload NexusVM IPA Artifact
+          echo "=== IPA verification ==="
+          test -f NexusVM.ipa
+          ls -lh NexusVM.ipa
+          unzip -t NexusVM.ipa
+
+      - name: Upload NexusVM IPA
         uses: actions/upload-artifact@v4
         with:
           name: NexusVM-QEMU-ipa
           path: NexusVM.ipa
+          if-no-files-found: error
+          retention-days: 14
