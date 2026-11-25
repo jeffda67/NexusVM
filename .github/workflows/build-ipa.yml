@@ -32,10 +32,14 @@ jobs:
       - name: Install All Build & Python Dependencies
         run: |
           brew install xcodegen meson ninja pkg-config cmake nasm bison flex gettext autoconf automake libtool coreutils gnu-sed
+          echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
+          echo "$(brew --prefix flex)/bin" >> $GITHUB_PATH
+          echo "$(brew --prefix gettext)/bin" >> $GITHUB_PATH
+          echo "$(brew --prefix gnu-sed)/libexec/gnubin" >> $GITHUB_PATH
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> $GITHUB_PATH
           pip3 install --break-system-packages six pyparsing setuptools distlib pyyaml packaging tomli mako markupsafe ply jinja2 lxml
           if [ -f utm-src/scripts/build_dependencies.sh ]; then
             PY_MODULES=$(grep -oE "import [a-zA-Z0-9_]+" utm-src/scripts/build_dependencies.sh | awk '{print $2}' | tr '\n' ' ')
-            echo "Detected Python modules in build_dependencies.sh: $PY_MODULES"
             for mod in $PY_MODULES; do
               pip3 install --break-system-packages "$mod" || true
             done
