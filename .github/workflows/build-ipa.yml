@@ -15,10 +15,18 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Checkout NexusVM
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Checkout UTM Source
+      - name: Cache Prebuilt iOS QEMU Sysroot
+        id: cache-qemu
+        uses: actions/cache@v4
+        with:
+          path: Frameworks
+          key: utm-ios-sysroot-v4
+
+      - name: Checkout UTM Source for iOS Sysroot Builder
+        if: steps.cache-qemu.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
         with:
           repository: utmapp/UTM
@@ -26,9 +34,9 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Install Build Dependencies
+      - name: Install All Build Dependencies
         run: |
-          brew install xcodegen meson ninja pkg-config cmake nasm bison flex gettext autoconf automake libtool coreutils
+          brew install xcodegen meson ninja pkg-config cmake nasm bison flex gettext autoconf automake libtool coreutils llvm spirv-llvm-translator libxcb libxrandr glib-utils libgpg-error
 
           echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
@@ -69,27 +77,55 @@ jobs:
           pkg-config --version
 
           echo "=== sed ==="
-          which sed
+          command -v sed
           sed --version 2>/dev/null || true
 
-      - name: Build iOS QEMU and SPICE Sysroot
+      - name: Patch UTM Missing IOMedia Header Removal
+        if: steps.cache-qemu.outputs.cache-hit != 'true'
         run: |
-          set -o pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          script = Path("utm-src/scripts/build_dependencies.sh")
+
+          if not script.exists():
+              raise SystemExit("ERROR: UTM dependency script was not found.")
+
+          content = script.read_text()
+
+          original = 'rm "$OUTPUT_INCLUDES/IOKit/storage/IOMedia.h"'
+          fixed = 'rm -f "$OUTPUT_INCLUDES/IOKit/storage/IOMedia.h"'
+
+          if original in content:
+              content = content.replace(original, fixed, 1)
+              script.write_text(content)
+              print("Patched IOMedia.h removal to tolerate a missing file.")
+          elif fixed in content:
+              print("IOMedia.h removal is already patched.")
+          else:
+              raise SystemExit(
+                  "ERROR: Could not locate the expected IOMedia.h removal command. "
+                  "UTM's dependency script may have changed."
+              )
+          PY
+
+      - name: Build iOS QEMU and SPICE Sysroot
+        if: steps.cache-qemu.outputs.cache-hit != 'true'
+        run: |
+          set -e
 
           cd utm-src
 
-          echo "=== UTM dependency builder ==="
-          ls -la scripts/
+          echo "=== Verify UTM dependency script ==="
           test -f scripts/build_dependencies.sh
-
           chmod +x scripts/build_dependencies.sh
 
-          echo "=== Build dependencies ==="
+          echo "=== Build iOS ARM64 dependencies ==="
           NCPU=0 ./scripts/build_dependencies.sh -p ios -a arm64
 
           cd ..
 
-          echo "=== Verify sysroot ==="
+          echo "=== Verify generated sysroot ==="
           test -d utm-src/sysroot-iOS-arm64
 
           rm -rf Frameworks
@@ -97,12 +133,25 @@ jobs:
 
           test -d Frameworks
 
+          echo "=== Sysroot successfully generated ==="
+          ls -lah Frameworks
+
+      - name: Verify QEMU Sysroot
+        run: |
+          if [ ! -d Frameworks ]; then
+            echo "ERROR: Frameworks sysroot is missing."
+            exit 1
+          fi
+
+          echo "Sysroot found:"
+          ls -lah Frameworks
+
       - name: Generate Xcode Project
         run: |
           xcodegen generate
           test -d NexusVM.xcodeproj
 
-      - name: Build Unsigned iOS App
+      - name: Build Unsigned Release App
         run: |
           set -o pipefail
 
@@ -124,7 +173,7 @@ jobs:
 
           if [ ! -d "$APP_PATH" ]; then
             echo "ERROR: NexusVM.app was not produced."
-            echo "Searching build directory:"
+            echo "Searching build directory for app bundles:"
             find build -name "*.app" -maxdepth 8 || true
             exit 1
           fi
@@ -152,7 +201,7 @@ jobs:
           ls -lh NexusVM.ipa
           unzip -t NexusVM.ipa
 
-      - name: Upload NexusVM IPA
+      - name: Upload NexusVM IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: NexusVM-QEMU-ipa
