@@ -18,7 +18,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Frameworks
-          key: utm-ios-sysroot-v2
+          key: utm-ios-sysroot-v3
 
       - name: Checkout UTM Source for iOS Sysroot Builder
         if: steps.cache-qemu.outputs.cache-hit != 'true'
@@ -49,10 +49,11 @@ jobs:
         if: steps.cache-qemu.outputs.cache-hit != 'true'
         run: |
           cd utm-src
+          sed -i 's|rm "\$SYSROOT_DIR/include/IOKit/|rm -f "\$SYSROOT_DIR/include/IOKit/|g' scripts/build_dependencies.sh
           NCPU=0 ./scripts/build_dependencies.sh -p ios -a arm64
           cd ..
           rm -rf Frameworks
-          mv utm-src/Sysroot-ios-arm64 Frameworks
+          mv utm-src/sysroot-iOS-arm64 Frameworks
           rm -rf utm-src
 
       - name: Generate Xcode Project
