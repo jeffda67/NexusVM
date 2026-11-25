@@ -23,11 +23,19 @@ jobs:
           path: Frameworks
           key: ios-qemu-arm64-v1
 
+      - name: Checkout QEMU Source
+        if: steps.cache-qemu.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: qemu/qemu
+          ref: v9.2.0
+          path: qemu-src
+          fetch-depth: 1
+
       - name: Build iOS QEMU Shared Libraries
         if: steps.cache-qemu.outputs.cache-hit != 'true'
         run: |
           mkdir -p Frameworks/lib Frameworks/include
-          git clone --depth 1 --branch v9.2.0 https://github.com qemu-src
           cd qemu-src
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           ./configure \
