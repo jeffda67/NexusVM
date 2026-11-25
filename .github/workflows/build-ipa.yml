@@ -13,17 +13,12 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install XcodeGen & Build Tools
-        run: |
-          brew install xcodegen meson ninja pkg-config cmake nasm bison flex gettext autoconf automake libtool
-          pip3 install --break-system-packages six pyparsing setuptools distlib pyyaml packaging tomli
-
       - name: Cache Prebuilt iOS QEMU Sysroot
         id: cache-qemu
         uses: actions/cache@v4
         with:
           path: Frameworks
-          key: utm-ios-sysroot-v1
+          key: utm-ios-sysroot-v2
 
       - name: Checkout UTM Source for iOS Sysroot Builder
         if: steps.cache-qemu.outputs.cache-hit != 'true'
@@ -33,6 +28,18 @@ jobs:
           path: utm-src
           submodules: true
           fetch-depth: 1
+
+      - name: Install All Build & Python Dependencies
+        run: |
+          brew install xcodegen meson ninja pkg-config cmake nasm bison flex gettext autoconf automake libtool coreutils gnu-sed
+          pip3 install --break-system-packages six pyparsing setuptools distlib pyyaml packaging tomli mako markupsafe ply jinja2 lxml
+          if [ -f utm-src/scripts/build_dependencies.sh ]; then
+            PY_MODULES=$(grep -oE "import [a-zA-Z0-9_]+" utm-src/scripts/build_dependencies.sh | awk '{print $2}' | tr '\n' ' ')
+            echo "Detected Python modules in build_dependencies.sh: $PY_MODULES"
+            for mod in $PY_MODULES; do
+              pip3 install --break-system-packages "$mod" || true
+            done
+          fi
 
       - name: Build iOS QEMU + SPICE Sysroot
         if: steps.cache-qemu.outputs.cache-hit != 'true'
