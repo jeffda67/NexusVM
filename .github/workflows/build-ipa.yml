@@ -27,7 +27,7 @@ jobs:
         if: steps.cache-qemu.outputs.cache-hit != 'true'
         run: |
           mkdir -p Frameworks/lib Frameworks/include
-          git clone --depth 1 --branch v9.2.0 https://gitlab.com qemu-src
+          git clone --depth 1 --branch v9.2.0 https://github.com qemu-src
           cd qemu-src
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           ./configure \
